@@ -8,8 +8,8 @@ Servo myservo; // create servo object to control a servo
 int candyButton = 2;
 int candyLightPin = 8;
 int currentLightState = HIGH;
-long candyLightPulseLengthMs = 1000;
-long lastPulseTime = 0;
+unsigned long candyLightPulseLengthMs = 1000;
+unsigned long lastPulseTime = 0;
 int flashCountOnCandy=4;
 void setup()
 {
@@ -39,7 +39,7 @@ void loop()
     lastPulseTime = millis();
   }
 
-  if (digitalRead(candyButton) == HIGH)
+  if (digitalRead(candyButton) == LOW)
   {
     for (int i = 0; i < flashCountOnCandy; i++)
     {
