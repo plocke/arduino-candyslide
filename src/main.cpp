@@ -6,18 +6,25 @@
 Servo myservo; // create servo object to control a servo
 
 int candyButton = 2;
+int slideLightPin = 7;
 int candyLightPin = 8;
+int servoPin = 9;
+
 int currentLightState = HIGH;
 unsigned long candyLightPulseLengthMs = 1000;
+unsigned long activateLightsPulseLengthMs = 75;
 unsigned long lastPulseTime = 0;
 int flashCountOnCandy=4;
 void setup()
 {
   Serial.begin(9600);
-  myservo.attach(9); // attaches the servo on pin 9 to the servo object
+  myservo.attach(servoPin); // attaches the servo on pin 9 to the servo object
   myservo.write(0);  // starting position;
   pinMode(candyLightPin, OUTPUT);
+  pinMode(slideLightPin, OUTPUT);
+  digitalWrite(slideLightPin, HIGH);
 }
+
 
 void loop()
 {
@@ -41,21 +48,32 @@ void loop()
 
   if (digitalRead(candyButton) == LOW)
   {
+    myservo.write(180);
     for (int i = 0; i < flashCountOnCandy; i++)
     {
       digitalWrite(candyLightPin, HIGH);
-      delay(75);
+      digitalWrite(slideLightPin, HIGH);
+      delay(activateLightsPulseLengthMs);
       digitalWrite(candyLightPin, LOW); 
-      delay(75);    
+      digitalWrite(slideLightPin, LOW);
+      delay(activateLightsPulseLengthMs);    
     }
     
-          digitalWrite(candyLightPin, HIGH);
+      digitalWrite(candyLightPin, HIGH);
+      digitalWrite(slideLightPin, HIGH);
 
-    Serial.println("Activating servo 1");
-    myservo.write(180);
-    delay(1000);
+
+    delay(1000- (activateLightsPulseLengthMs*2*flashCountOnCandy));
     myservo.write(0);
-    delay(1500);
+    for (int i = 0; i < flashCountOnCandy; i++)
+    {
+      digitalWrite(slideLightPin, HIGH);
+      delay(75);
+      digitalWrite(slideLightPin, LOW);
+      delay(75);    
+    }
+    digitalWrite(slideLightPin, HIGH);
+    delay(1000);
     digitalWrite(candyLightPin, LOW);
     lastPulseTime = millis();
   }
