@@ -11,9 +11,12 @@ int candyLightPin = 8;
 int servoPin = 9;
 
 int currentLightState = HIGH;
+int currentCandyButtonState = LOW;
 unsigned long candyLightPulseLengthMs = 1000;
 unsigned long activateLightsPulseLengthMs = 75;
 unsigned long lastPulseTime = 0;
+unsigned long lastCandyButtonStateChange = 0;
+int debounceTimeMillis = 100;
 int flashCountOnCandy=4;
 void setup()
 {
@@ -46,8 +49,11 @@ void loop()
     lastPulseTime = millis();
   }
 
-  if (digitalRead(candyButton) == LOW)
+  if (digitalRead(candyButton) == LOW && (currentCandyButtonState == HIGH) 
+    && (millis()-lastCandyButtonStateChange > debounceTimeMillis))
   {
+    currentCandyButtonState = LOW;
+    lastCandyButtonStateChange = millis();
     myservo.write(180);
     for (int i = 0; i < flashCountOnCandy; i++)
     {
@@ -76,7 +82,13 @@ void loop()
     delay(1000);
     digitalWrite(candyLightPin, LOW);
     lastPulseTime = millis();
+  } 
+  
+  if (digitalRead(candyButton) == HIGH && (millis()-lastCandyButtonStateChange > debounceTimeMillis)) {
+      currentCandyButtonState = HIGH;
+      lastCandyButtonStateChange = millis();
   }
+  
   //myservo.writeMicroseconds(0);                // sets the servo position according to the scaled value
   //delay(250);                           // waits for the servo to get there
 }
