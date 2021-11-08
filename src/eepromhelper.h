@@ -28,4 +28,3 @@ struct eeprom_config_struct
 extern eeprom_config_struct eepromsave;
 
 const int EEPROM_SAVELOCATION = 0;
-const boolean RESET_EEPROM = false; //set to true and next boot will clear eeprom
