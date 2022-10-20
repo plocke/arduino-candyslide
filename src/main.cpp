@@ -7,8 +7,7 @@
 #include <lcdhelper.h>
 
 
-Servo myservo; // create servo object to control a servo
-Servo myTopservo; // create servo object to control a servo
+//Servo myTopservo; // create servo object to control a servo
 
 bool ALLOW_SERIAL = false;
 int candyButton = 2;
@@ -17,6 +16,13 @@ int slideLightPin = 7;
 int candyLightPin = 8;
 int servoPin = 9;
 int topServoPin = 13;
+
+
+//Servo servo1, servo2; // create servo object to control a servo
+
+
+Servo servos_array[] = {Servo(), Servo()};
+int servos_pins_array[] = {9, 13};
 LiquidCrystal lcd(12, 11, 10, 6, 5, 4, 3);
 eeprom_config_struct eepromsave;
 
@@ -26,12 +32,31 @@ unsigned long lastPulseTime = 0;
 unsigned long lastCandyButtonStateChange = 0;
 int candyGiven = 0;
 
+const int NUM_SERVOS = 2;
 const int SERVO_CANDY_CYCLE_DELAY = 500;
 const long candyLightPulseLengthMs = 1000;
 const long activateLightsPulseLengthMs = 75;
 const int debounceTimeMillis = 100;
 const int flashCountOnCandy=4;
 const boolean RESET_EEPROM = false; //set to true and next boot will clear eeprom
+
+void setLCDstartingText()
+{
+  lcd.clear();
+  setFirstLine("CANDY GIVEN: "+String(candyGiven), lcd);    // change text to whatever you like. keep it clean!
+  setSecondLine("-SLIDE v3--", lcd);
+  setThirdLine("Press Foot Button", lcd);
+  setFourthLine("For Candy!", lcd);
+}
+
+void setLCDdispensingText()
+{
+    lcd.clear();
+    setFirstLine("********************", lcd); 
+    setSecondLine("! DISPENSING CANDY !", lcd);
+    setThirdLine("Trick-or-Treat # "+String(candyGiven), lcd);
+    setFourthLine("********************", lcd);
+}
 
 void setup()
 {
@@ -48,57 +73,65 @@ void setup()
 
   EEPROM_readAnything(EEPROM_SAVELOCATION, eepromsave);
   candyGiven = eepromsave.candylifetime;
-
-  myservo.attach(servoPin); // attaches the servo on pin 9 to the servo object
-  myTopservo.attach(topServoPin);
-  myTopservo.write(0);
+  // for (int i = 0; i < NUM_SERVOS; i++)
+  // {
+  //   servos_array[i].attach(servos_pins_array[i]);
+  //   servos_array[i].write(0);
+  // }
+  
+  //myservo.attach(servoPin); // attaches the servo on pin 9 to the servo object
+  //myTopservo.attach(topServoPin);
   pinMode(candyButton, INPUT_PULLUP);
   pinMode(resetButton, INPUT_PULLUP);
   pinMode(candyLightPin, OUTPUT);
   pinMode(slideLightPin, OUTPUT);
   digitalWrite(slideLightPin, HIGH);
-  myservo.write(0);  // starting position;
-  myTopservo.write(0);
-  //myservo.detach();
+
+  //myservo.write(0);  // starting position;
+  //myTopservo.write(0);
   lcd.begin(20,4);              // columns, rows.  use 16,2 for a 16x2 LCD, etc.
   lcd.clear();                  // start with a blank screen
-  setFirstLine("CANDY GIVEN: "+String(candyGiven), lcd);    // change text to whatever you like. keep it clean!
-  setSecondLine("-SLIDE v3--", lcd);
-  setThirdLine("Press Foot Button", lcd);
-  setFourthLine("For Candy!", lcd);
-
-
+  setLCDstartingText();
 }
 
+void blinkCursorOnScreen(bool blinkOn)
+{
+      if (blinkOn)
+      {
+        lcd.setCursor(19, 1);
+        lcd.write("|");
+        lcd.setCursor(19, 2);
+        lcd.write("|");
+        lcd.setCursor(19, 3);
+        lcd.write("V");
+      } else {
+        lcd.setCursor(19, 1);
+        lcd.write(" ");
+        lcd.setCursor(19, 2);
+        lcd.write(" ");
+        lcd.setCursor(19, 3);
+        lcd.write(" ");
+      }
+      
+}
 
 void loop()
 {
   if ((millis() - lastPulseTime) > candyLightPulseLengthMs)
   {
-      //myservo.write(0);  // starting position;
-      // myTopservo.write(180);
+    
     if (currentLightState == HIGH)
     {
       digitalWrite(candyLightPin, LOW);
       currentLightState = LOW;
-      lcd.setCursor(19, 1);
-      lcd.write("|");
-      lcd.setCursor(19, 2);
-      lcd.write("|");
-      lcd.setCursor(19, 3);
-      lcd.write("V");
+      blinkCursorOnScreen(true);
 
     }
     else if (currentLightState == LOW)
     {
       digitalWrite(candyLightPin, HIGH);
       currentLightState = HIGH;
-      lcd.setCursor(19, 1);
-      lcd.write(" ");
-      lcd.setCursor(19, 2);
-      lcd.write(" ");
-      lcd.setCursor(19, 3);
-      lcd.write(" ");
+      blinkCursorOnScreen(false);
     }
     lastPulseTime = millis();
   }
@@ -109,13 +142,13 @@ void loop()
     currentCandyButtonState = LOW;
     lastCandyButtonStateChange = millis();
     candyGiven++;
-    lcd.clear();
-    setFirstLine("********************", lcd); 
-    setSecondLine("! DISPENSING CANDY !", lcd);
-    setThirdLine("Trick-or-Treat # "+String(candyGiven), lcd);
-    setFourthLine("********************", lcd);
-    myservo.write(180);
-    myTopservo.write(180);
+    setLCDdispensingText();
+
+    for (int i = 0; i < NUM_SERVOS; i++)
+    {
+      servos_array[i].attach(servos_pins_array[i]);
+      servos_array[i].write(180);
+    }
 
     for (int i = 0; i < flashCountOnCandy; i++)
     {
@@ -131,11 +164,18 @@ void loop()
       digitalWrite(slideLightPin, HIGH);
 
 
-    //delay(1000- (activateLightsPulseLengthMs*2*flashCountOnCandy));
     delay(SERVO_CANDY_CYCLE_DELAY);
-    myservo.write(0);
-    myTopservo.write(0);
-    
+    for (int i = 0; i < NUM_SERVOS; i++)
+    {
+      servos_array[i].write(0);
+    }
+    delay(SERVO_CANDY_CYCLE_DELAY);
+    for (int i = 0; i < NUM_SERVOS; i++)
+    {
+      servos_array[i].detach(); //stops jitter
+    }
+
+
     for (int i = 0; i < flashCountOnCandy; i++)
     {
       digitalWrite(slideLightPin, HIGH);
@@ -144,7 +184,8 @@ void loop()
       delay(75);    
     }
     digitalWrite(slideLightPin, HIGH);
-    delay(3000);
+    delay(2500);
+
     digitalWrite(candyLightPin, LOW);
     lastPulseTime = millis();
     eepromsave.candylifetime = candyGiven;
@@ -166,9 +207,6 @@ void loop()
     candyGiven = 0;
     EEPROM_writeAnything(EEPROM_SAVELOCATION, eepromsave);
     lcd.clear();
-    setFirstLine("Reset candy count", lcd);    // change text to whatever you like. keep it clean!
+    setFirstLine("Reset candy count", lcd);    
   }
-  
-  //myservo.writeMicroseconds(0);                // sets the servo position according to the scaled value
-  //delay(250);                           // waits for the servo to get there
 }
