@@ -18,11 +18,13 @@ int servoPin = 9;
 int topServoPin = 13;
 
 
-//Servo servo1, servo2; // create servo object to control a servo
 
 
 Servo servos_array[] = {Servo(), Servo()};
 int servos_pins_array[] = {9, 13};
+int candy_button_pins_array[] = {2, A4};
+int pressed_button = -1;
+
 LiquidCrystal lcd(12, 11, 10, 6, 5, 4, 3);
 eeprom_config_struct eepromsave;
 
@@ -32,13 +34,20 @@ unsigned long lastPulseTime = 0;
 unsigned long lastCandyButtonStateChange = 0;
 int candyGiven = 0;
 
-const int NUM_SERVOS = 2;
+const int NUMBER_CANDYCHUTES = 2;
 const int SERVO_CANDY_CYCLE_DELAY = 500;
 const long candyLightPulseLengthMs = 1000;
 const long activateLightsPulseLengthMs = 75;
 const int debounceTimeMillis = 100;
 const int flashCountOnCandy=4;
 const boolean RESET_EEPROM = false; //set to true and next boot will clear eeprom
+
+void detachServos() {
+  for (int i = 0; i < NUMBER_CANDYCHUTES; i++)
+    {
+      servos_array[i].detach(); //stops jitter. @todo move to after longer delay to give friction time
+    }
+}
 
 void setLCDstartingText()
 {
@@ -73,15 +82,16 @@ void setup()
 
   EEPROM_readAnything(EEPROM_SAVELOCATION, eepromsave);
   candyGiven = eepromsave.candylifetime;
-  // for (int i = 0; i < NUM_SERVOS; i++)
-  // {
-  //   servos_array[i].attach(servos_pins_array[i]);
-  //   servos_array[i].write(0);
-  // }
+  for (int i = 0; i < NUMBER_CANDYCHUTES; i++)
+   {
+    pinMode(candy_button_pins_array[i], INPUT_PULLUP);
+    servos_array[i].attach(servos_pins_array[i]);
+    servos_array[i].write(0);
+  }
   
   //myservo.attach(servoPin); // attaches the servo on pin 9 to the servo object
   //myTopservo.attach(topServoPin);
-  pinMode(candyButton, INPUT_PULLUP);
+  //pinMode(candyButton, INPUT_PULLUP);
   pinMode(resetButton, INPUT_PULLUP);
   pinMode(candyLightPin, OUTPUT);
   pinMode(slideLightPin, OUTPUT);
@@ -92,6 +102,8 @@ void setup()
   lcd.begin(20,4);              // columns, rows.  use 16,2 for a 16x2 LCD, etc.
   lcd.clear();                  // start with a blank screen
   setLCDstartingText();
+  delay(SERVO_CANDY_CYCLE_DELAY);
+  detachServos();
 }
 
 void blinkCursorOnScreen(bool blinkOn)
@@ -136,7 +148,18 @@ void loop()
     lastPulseTime = millis();
   }
 
-  if (digitalRead(candyButton) == LOW && (currentCandyButtonState == HIGH) 
+  pressed_button = -1;
+  for (int i = 0; i < NUMBER_CANDYCHUTES; i++)
+  {
+    if (digitalRead(candy_button_pins_array[i]) == LOW)
+    {
+      pressed_button = i;
+      break;
+    }
+  }
+  
+
+  if (pressed_button >= 0 && (currentCandyButtonState == HIGH) 
     && ((millis()-lastCandyButtonStateChange) > debounceTimeMillis))
   {
     currentCandyButtonState = LOW;
@@ -144,11 +167,10 @@ void loop()
     candyGiven++;
     setLCDdispensingText();
 
-    for (int i = 0; i < NUM_SERVOS; i++)
-    {
-      servos_array[i].attach(servos_pins_array[i]);
-      servos_array[i].write(180);
-    }
+    
+      servos_array[pressed_button].attach(servos_pins_array[pressed_button]);
+      servos_array[pressed_button].write(180);
+   
 
     for (int i = 0; i < flashCountOnCandy; i++)
     {
@@ -165,16 +187,8 @@ void loop()
 
 
     delay(SERVO_CANDY_CYCLE_DELAY);
-    for (int i = 0; i < NUM_SERVOS; i++)
-    {
-      servos_array[i].write(0);
-    }
-    delay(SERVO_CANDY_CYCLE_DELAY);
-    for (int i = 0; i < NUM_SERVOS; i++)
-    {
-      servos_array[i].detach(); //stops jitter
-    }
-
+  
+    servos_array[pressed_button].write(0);
 
     for (int i = 0; i < flashCountOnCandy; i++)
     {
@@ -185,7 +199,7 @@ void loop()
     }
     digitalWrite(slideLightPin, HIGH);
     delay(2500);
-
+    detachServos();
     digitalWrite(candyLightPin, LOW);
     lastPulseTime = millis();
     eepromsave.candylifetime = candyGiven;
@@ -197,7 +211,7 @@ void loop()
     setFourthLine("For Candy!", lcd);
   } 
   
-  if (digitalRead(candyButton) == HIGH && (millis()-lastCandyButtonStateChange > debounceTimeMillis)) {
+  if ((pressed_button >= 0 && digitalRead(candy_button_pins_array[pressed_button]) == HIGH) && (millis()-lastCandyButtonStateChange > debounceTimeMillis)) {
       currentCandyButtonState = HIGH;
       lastCandyButtonStateChange = millis();
   }
