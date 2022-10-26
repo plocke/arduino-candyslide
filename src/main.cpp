@@ -211,7 +211,9 @@ void loop()
     setFourthLine("For Candy!", lcd);
   } 
   
-  if ((pressed_button < 0 || digitalRead(candy_button_pins_array[pressed_button]) == HIGH) && (millis()-lastCandyButtonStateChange > debounceTimeMillis)) {
+  if (currentCandyButtonState == LOW && 
+  (pressed_button < 0 || digitalRead(candy_button_pins_array[pressed_button]) == HIGH) && 
+   (millis()-lastCandyButtonStateChange > debounceTimeMillis)) {
       currentCandyButtonState = HIGH;
       lastCandyButtonStateChange = millis();
       for (int i = 0; i < flashCountOnCandy; i++)
