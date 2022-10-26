@@ -22,7 +22,7 @@ template <class T> int EEPROM_readAnything(int ee, T& value)
 //eeprom saved values
 struct eeprom_config_struct
 {
-    int candylifetime;
+    int candy_counts[10];
 };
 
 extern eeprom_config_struct eepromsave;
