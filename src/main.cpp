@@ -11,17 +11,15 @@
 bool ALLOW_SERIAL = false;
 int resetButton = A5; 
 int slideLightPin = 7;
-int servoPin = 9;
-int topServoPin = 13;
 
 //to add more candy chutes, only need to change this section
 Servo servos_array[] = {Servo(), Servo()};
 int servos_pins_array[] = {9, 13};
-int candy_button_pins_array[] = {2, A4};
-int candy_light_pins_array[] = {8, A3};
+int candy_button_pins_array[] = {A4, 2};
+int candy_light_pins_array[] = {A3, 8};
 int candy_given_count_array[] = {0, 0};
 const int NUMBER_CANDYCHUTES = 2;
-String candy_names_array[] = {"Smarties", "Coffee Crisp"};
+String candy_names_array[] = {"Smarties",  "Coffee Crisp"};
 //end chutes 
 
 LiquidCrystal lcd(12, 11, 10, 6, 5, 4, 3);
@@ -61,15 +59,15 @@ void setLCDstartingText()
   lcd.clear();
   setFirstLine(candy_names_array[0]+": " + String(candy_given_count_array[0]), lcd); // change text to whatever you like. keep it clean!
   setSecondLine(candy_names_array[1]+": "+ String(candy_given_count_array[1]), lcd);
-  setThirdLine("Press Foot Button", lcd);
+  setThirdLine("Press Foot Buttons", lcd);
   setFourthLine("For Candy!", lcd);
 }
 
-void setLCDdispensingText()
+void setLCDdispensingText(int buttonPressed)
 {
   lcd.clear();
   setFirstLine("********************", lcd);
-  setSecondLine("! DISPENSING CANDY !", lcd);
+  setSecondLine(candy_names_array[buttonPressed]+ " !!", lcd);
   setThirdLine(" # Trick-or-Treat # "   , lcd);
   setFourthLine("********************", lcd);
 }
@@ -106,16 +104,11 @@ void setup()
     servos_array[i].write(0);
   }
 
-  // myservo.attach(servoPin); // attaches the servo on pin 9 to the servo object
-  // myTopservo.attach(topServoPin);
-  // pinMode(candyButton, INPUT_PULLUP);
+
   pinMode(resetButton, INPUT_PULLUP);
-  // pinMode(candyLightPin, OUTPUT);
   pinMode(slideLightPin, OUTPUT);
   digitalWrite(slideLightPin, HIGH);
 
-  // myservo.write(0);  // starting position;
-  // myTopservo.write(0);
   lcd.begin(20, 4); // columns, rows.  use 16,2 for a 16x2 LCD, etc.
   lcd.clear();      // start with a blank screen
   setLCDstartingText();
@@ -180,7 +173,7 @@ void loop()
     currentCandyButtonState = LOW;
     lastCandyButtonStateChange = millis();
     candy_given_count_array[pressed_button]++;
-    setLCDdispensingText();
+    setLCDdispensingText(pressed_button);
 
     servos_array[pressed_button].attach(servos_pins_array[pressed_button]);
     servos_array[pressed_button].write(180);
