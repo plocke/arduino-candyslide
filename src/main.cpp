@@ -5,22 +5,30 @@
 #include <LiquidCrystal.h>
 #include <eepromhelper.h>
 #include <lcdhelper.h>
+#include <light_sound_helper.h>
 
 // Servo myTopservo; // create servo object to control a servo
 
 bool ALLOW_SERIAL = false;
-int resetButton = A5; 
+int resetButton = A7; 
 int slideLightPin = 7;
 
 //to add more candy chutes, only need to change this section
 Servo servos_array[] = {Servo(), Servo()};
 int servos_pins_array[] = {9, 13};
-int candy_button_pins_array[] = {A4, 2};
+int candy_button_pins_array[] = {A6, 2};
 int candy_light_pins_array[] = {A3, 8};
 int candy_given_count_array[] = {0, 0};
 const int NUMBER_CANDYCHUTES = 2;
 String candy_names_array[] = {"Smarties",  "Coffee Crisp"};
 //end chutes 
+
+int randomButtonPin = A0;
+int randomButtonLight = A1;
+int randomButtonPressCount = 0;
+
+const int speakerPin = A2;
+
 
 LiquidCrystal lcd(12, 11, 10, 6, 5, 4, 3);
 eeprom_config_struct eepromsave;
@@ -30,7 +38,9 @@ int currentLightState = HIGH;
 int currentCandyButtonState = LOW;
 unsigned long lastPulseTime = 0;
 unsigned long lastCandyButtonStateChange = 0;
+int bonusChancePercentage = 75; //change this for higher or lower bonus chance on random
 
+const int BONUS_RESULT = -1;
 const int SERVO_CANDY_CYCLE_DELAY = 500;
 const long candyLightPulseLengthMs = 1000;
 const long activateLightsPulseLengthMs = 75;
@@ -44,6 +54,18 @@ void turnAllCandyLightsOnOrOff(bool turnOn)
   {
     digitalWrite(candy_light_pins_array[i], turnOn ? HIGH : LOW);
   }
+}
+
+int getRandomCandyChuteOrBonusResult(int percentageChanceOfBonus) {
+
+  int randNum = random(100);
+
+  if(randNum < percentageChanceOfBonus) {
+    return BONUS_RESULT; 
+  } else {
+    return random(NUMBER_CANDYCHUTES); 
+  }
+
 }
 
 void detachServos()
@@ -95,6 +117,7 @@ void setup()
   }
 
   EEPROM_readAnything(EEPROM_SAVELOCATION, eepromsave);
+  randomButtonPressCount = eepromsave.randomButtonPressCount; 
   for (int i = 0; i < NUMBER_CANDYCHUTES; i++)
   {
     candy_given_count_array[i] = eepromsave.candy_counts[i];
@@ -104,7 +127,8 @@ void setup()
     servos_array[i].write(0);
   }
 
-
+  pinMode(randomButtonPin, INPUT_PULLUP);
+  pinMode(randomButtonLight, OUTPUT);
   pinMode(resetButton, INPUT_PULLUP);
   pinMode(slideLightPin, OUTPUT);
   digitalWrite(slideLightPin, HIGH);
@@ -114,28 +138,6 @@ void setup()
   setLCDstartingText();
   delay(SERVO_CANDY_CYCLE_DELAY);
   detachServos();
-}
-
-void blinkCursorOnScreen(bool blinkOn)
-{
-  if (blinkOn)
-  {
-    lcd.setCursor(19, 1);
-    lcd.write("|");
-    lcd.setCursor(19, 2);
-    lcd.write("|");
-    lcd.setCursor(19, 3);
-    lcd.write("V");
-  }
-  else
-  {
-    lcd.setCursor(19, 1);
-    lcd.write(" ");
-    lcd.setCursor(19, 2);
-    lcd.write(" ");
-    lcd.setCursor(19, 3);
-    lcd.write(" ");
-  }
 }
 
 void loop()
@@ -158,6 +160,16 @@ void loop()
     lastPulseTime = millis();
   }
 
+if (digitalRead(randomButtonPin) == LOW) {
+  int candyChuteIndexOrBonus = getRandomCandyChuteOrBonusResult(bonusChancePercentage);
+  randomButtonPressCount++;
+  if (candyChuteIndexOrBonus == BONUS_RESULT) {
+    playBonusTune(speakerPin);
+  } else {
+   pressed_button = candyChuteIndexOrBonus;
+  }
+}
+
   pressed_button = -1;
   for (int i = 0; i < NUMBER_CANDYCHUTES; i++)
   {
@@ -167,6 +179,10 @@ void loop()
       break;
     }
   }
+
+
+
+
 
   if (pressed_button >= 0 && (currentCandyButtonState == HIGH) && ((millis() - lastCandyButtonStateChange) > debounceTimeMillis))
   {
@@ -209,6 +225,7 @@ void loop()
     turnAllCandyLightsOnOrOff(false);
     lastPulseTime = millis();
     eepromsave.candy_counts[pressed_button] = candy_given_count_array[pressed_button];
+    eepromsave.randomButtonPressCount = randomButtonPressCount;
     EEPROM_writeAnything(EEPROM_SAVELOCATION, eepromsave);
     lcd.clear();
     setLCDstartingText();

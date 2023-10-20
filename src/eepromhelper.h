@@ -22,8 +22,10 @@ template <class T> int EEPROM_readAnything(int ee, T& value)
 //eeprom saved values
 struct eeprom_config_struct
 {
-    int candy_counts[10];
+  int candy_counts[10];
+  int randomButtonPressCount; 
 };
+
 
 extern eeprom_config_struct eepromsave;
 
