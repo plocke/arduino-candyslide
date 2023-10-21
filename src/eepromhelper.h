@@ -24,6 +24,7 @@ struct eeprom_config_struct
 {
   int candy_counts[10];
   int randomButtonPressCount; 
+  int randomWinnerCount;
 };
 
 

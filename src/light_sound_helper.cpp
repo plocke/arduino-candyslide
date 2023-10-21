@@ -1,20 +1,38 @@
 #include "light_sound_helper.h"
 #include <Arduino.h>
 
-const int NOTE_DELAY = 200;
 
-// In loop()
-void playBonusTune(int speakerPin) {
+const int HAPPY_NOTES[] = {262, 294, 330, 349}; // C D E F
+const int HAPPY_TEMPO = 100;
 
-    // Play tune on speaker  
-    tone(speakerPin, 440); // A4 note
-    delay(NOTE_DELAY);
-    tone(speakerPin, 494); // B4 note
-    delay(NOTE_DELAY);  
-    tone(speakerPin, 523); // C5 note 
-    delay(NOTE_DELAY);
+void playHappyTune(int speakerPin)
+{
 
-    noTone(speakerPin); // Stop sound
-  
+    for (int i = 0; i < 4; i++)
+    {
+        // Play each note
+        tone(speakerPin, HAPPY_NOTES[i]);
+        delay(HAPPY_TEMPO);
+        noTone(speakerPin);
+        delay(HAPPY_TEMPO);
+    }
 
+    // Repeat
+    for (int i = 0; i < 2; i++)
+    {
+        for (int j = 0; j < 4; j++)
+        {
+            tone(speakerPin, HAPPY_NOTES[j]);
+            delay(HAPPY_TEMPO);
+            noTone(speakerPin);
+            delay(HAPPY_TEMPO);
+        }
+    }
+}
+
+
+void playBonusTune(int speakerPin)
+{
+
+    playHappyTune(speakerPin);
 }
