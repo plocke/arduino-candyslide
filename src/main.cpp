@@ -58,18 +58,6 @@ void turnAllCandyLightsOnOrOff(bool turnOn)
     }
 }
 
-int getRandomCandyChuteOrBonusResult(int percentageChanceOfBonus)
-{
-
-    int randNum = random(100);
-
-    if (randNum < percentageChanceOfBonus) {
-        return BONUS_RESULT;
-    } else {
-        return random(NUMBER_CANDYCHUTES);
-    }
-}
-
 void detachServos()
 {
     for (int i = 0; i < NUMBER_CANDYCHUTES; i++) {
@@ -191,7 +179,6 @@ void loop()
             } else {
                 candyChuteIndexOrBonus = random(NUMBER_CANDYCHUTES);
             }
-            // int candyChuteIndexOrBonus = getRandomCandyChuteOrBonusResult(bonusChancePercentage);
             randomButtonPressCount++;
             lcd.clear();
             setBonusWinnerText();
