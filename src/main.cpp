@@ -10,7 +10,7 @@
 // Servo myTopservo; // create servo object to control a servo
 
 bool ALLOW_SERIAL = false;
-int resetButton = A7;
+int resetButton = A5;
 int slideLightPin = 7;
 
 // to add more candy chutes, only need to change this section
@@ -130,6 +130,9 @@ void setup()
     EEPROM_readAnything(EEPROM_SAVELOCATION, eepromsave);
     randomButtonPressCount = eepromsave.randomButtonPressCount;
     randomWinnerCount = eepromsave.randomWinnerCount;
+
+    randomSeed(millis() + analogRead(A6));
+
     for (int i = 0; i < NUMBER_CANDYCHUTES; i++) {
         candy_given_count_array[i] = eepromsave.candy_counts[i];
         pinMode(candy_button_pins_array[i], INPUT_PULLUP);
@@ -148,6 +151,7 @@ void setup()
     lcd.begin(20, 4); // columns, rows.  use 16,2 for a 16x2 LCD, etc.
     lcd.clear(); // start with a blank screen
     setLCDstartingText();
+    playBonusTune(speakerPin);
     delay(SERVO_CANDY_CYCLE_DELAY);
     detachServos();
 }
@@ -178,7 +182,6 @@ void loop()
 
     if (currentRandomButtonState == HIGH && (millis() - lastRandomButtonStateChange) > DEBOUNCE_TIME_MILLIS) {
         if (digitalRead(randomButtonPin) == LOW) {
-            randomSeed(millis()+analogRead(A6));
             currentRandomButtonState = LOW;
             lastRandomButtonStateChange = millis();
             int randNum = random(100);
@@ -225,6 +228,8 @@ void loop()
             eepromsave.randomWinnerCount = randomWinnerCount;
             eepromsave.randomButtonPressCount = randomButtonPressCount;
             EEPROM_writeAnything(EEPROM_SAVELOCATION, eepromsave);
+            setLCDstartingText();
+
         }
     }
     if (currentRandomButtonState == LOW && digitalRead(randomButtonPin) == HIGH) {
@@ -286,17 +291,11 @@ void loop()
         }
     }
 
-    bool allButtonsPressed = true;
-
-    for (int i = 0; i < NUMBER_CANDYCHUTES; i++) {
-        if (digitalRead(candy_button_pins_array[i]) == HIGH) {
-            allButtonsPressed = false;
-            break;
-        }
-    }
-    if (allButtonsPressed && digitalRead(randomButtonPin) == LOW) {
+    if (digitalRead(resetButton) == LOW) {
         resetEEPROM();
         lcd.clear();
         setFirstLine("Reset candy count", lcd);
+        delay(2000);
+        setLCDstartingText();
     }
 }
