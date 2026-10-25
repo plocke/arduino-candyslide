@@ -18,20 +18,24 @@ int noteDurations[] = {
     8, 8, 8, 4, 4
 };
 
-void playHappyTune(int speakerPin)
+void playHappyTune(int speakerPin, bool soundEnabled)
 {
-    for (int thisNote = 0; thisNote < sizeof(melody) / sizeof(int); thisNote++) {
+    for (unsigned int thisNote = 0; thisNote < sizeof(melody) / sizeof(int); thisNote++) {
         int noteDuration = 1000 / noteDurations[thisNote];
-        tone(speakerPin, melody[thisNote], noteDuration);
+        if (soundEnabled) {
+            tone(speakerPin, melody[thisNote], noteDuration);
+        }
 
         int pauseBetweenNotes = noteDuration * 1.30;
         delay(pauseBetweenNotes);
 
-        noTone(speakerPin);
+        if (soundEnabled) {
+            noTone(speakerPin);
+        }
     }
 }
 
-void playBonusTune(int speakerPin)
+void playBonusTune(int speakerPin, bool soundEnabled)
 {
-    playHappyTune(speakerPin);
+    playHappyTune(speakerPin, soundEnabled);
 }

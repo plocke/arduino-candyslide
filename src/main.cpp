@@ -10,6 +10,7 @@
 // Servo myTopservo; // create servo object to control a servo
 
 bool ALLOW_SERIAL = false;
+bool SOUND_ENABLED = false; // false mutes the speaker; tune timing is kept so servo dwell is unchanged
 int resetButton = A5;
 int slideLightPin = 7;
 
@@ -159,7 +160,7 @@ void setup()
     lcd.begin(20, 4); // columns, rows.  use 16,2 for a 16x2 LCD, etc.
     lcd.clear(); // start with a blank screen
     setSecondLine("Happy Halloween 2026", lcd); // greeting shown while the startup tune plays
-    playBonusTune(speakerPin); // the tune plus the delay below give the servos time to reach home before release
+    playBonusTune(speakerPin, SOUND_ENABLED); // the tune plus the delay below give the servos time to reach home before release
     delay(SERVO_CANDY_CYCLE_DELAY);
     detachServos();
     setLCDstartingText();
@@ -219,7 +220,7 @@ void loop()
                     delay(100);
                 }
 
-                playBonusTune(speakerPin);
+                playBonusTune(speakerPin, SOUND_ENABLED);
                 delay(SERVO_CANDY_CYCLE_DELAY);
 
 
