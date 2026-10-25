@@ -43,7 +43,12 @@ unsigned long lastCandyButtonStateChange = 0;
 int bonusChancePercentage = 20; // change this for higher or lower bonus chance on random
 
 const int BONUS_RESULT = -1;
-const int SERVO_CANDY_CYCLE_DELAY = 500;
+const int SERVO_CANDY_CYCLE_DELAY = 500; // how long a chute stays open
+// Servo travel. Full 0/180 stalls most hobby servos against their end stops (buzzing, heat, gear wear).
+// Calibrate these to the smallest sweep that still clears the candy without buzzing at either end.
+const int SERVO_CLOSED_ANGLE = 10;
+const int SERVO_OPEN_ANGLE = 170;
+const int SERVO_RETURN_SETTLE_MS = 2500; // time given for a servo to get fully home before its signal is removed
 const long candyLightPulseLengthMs = 1000;
 const long activateLightsPulseLengthMs = 75;
 const int DEBOUNCE_TIME_MILLIS = 100;
@@ -58,10 +63,25 @@ void turnAllCandyLightsOnOrOff(bool turnOn)
     }
 }
 
+// Set the target before attaching so the first pulse is never the library's 90 degree default.
+void openServo(int chute)
+{
+    servos_array[chute].write(SERVO_OPEN_ANGLE);
+    servos_array[chute].attach(servos_pins_array[chute]);
+}
+
+void closeServo(int chute)
+{
+    servos_array[chute].write(SERVO_CLOSED_ANGLE);
+}
+
 void detachServos()
 {
     for (int i = 0; i < NUMBER_CANDYCHUTES; i++) {
-        servos_array[i].detach(); // stops jitter. @todo move to after longer delay to give friction time
+        servos_array[i].detach(); // stops jitter while idle
+        // detach() only clears a flag; if it lands mid-pulse the ISR never ends the pulse and the
+        // signal line stays HIGH, which sends the servo somewhere random. Force it low.
+        digitalWrite(servos_pins_array[i], LOW);
     }
 }
 
@@ -125,8 +145,8 @@ void setup()
         candy_given_count_array[i] = eepromsave.candy_counts[i];
         pinMode(candy_button_pins_array[i], INPUT_PULLUP);
         pinMode(candy_light_pins_array[i], OUTPUT);
+        servos_array[i].write(SERVO_CLOSED_ANGLE);
         servos_array[i].attach(servos_pins_array[i]);
-        servos_array[i].write(0);
     }
 
     pinMode(randomButtonPin, INPUT_PULLUP);
@@ -138,10 +158,11 @@ void setup()
 
     lcd.begin(20, 4); // columns, rows.  use 16,2 for a 16x2 LCD, etc.
     lcd.clear(); // start with a blank screen
-    setLCDstartingText();
-    playBonusTune(speakerPin);
+    setSecondLine("Happy Halloween 2026", lcd); // greeting shown while the startup tune plays
+    playBonusTune(speakerPin); // the tune plus the delay below give the servos time to reach home before release
     delay(SERVO_CANDY_CYCLE_DELAY);
     detachServos();
+    setLCDstartingText();
 }
 
 void loop()
@@ -186,10 +207,9 @@ void loop()
             if (candyChuteIndexOrBonus == BONUS_RESULT) {
                 randomWinnerCount++;
                
-                // First loop to move servos to 180
+                // Open every chute
                 for (int i = 0; i < NUMBER_CANDYCHUTES; i++) {
-                    servos_array[i].attach(servos_pins_array[i]);
-                    servos_array[i].write(180);
+                    openServo(i);
                 }
 
                  for (int i = 0; i < 3; i++) {
@@ -203,12 +223,12 @@ void loop()
                 delay(SERVO_CANDY_CYCLE_DELAY);
 
 
-                // Second loop to move servos back to 0
+                // Close every chute and give them the same time to get home as a normal candy press
                 for (int i = 0; i < NUMBER_CANDYCHUTES; i++) {
-                    servos_array[i].write(0);
+                    closeServo(i);
                 }
-                 delay(SERVO_CANDY_CYCLE_DELAY);
-                 detachServos();
+                delay(SERVO_RETURN_SETTLE_MS);
+                detachServos();
             } else {
                 pressed_button = candyChuteIndexOrBonus;
             }
@@ -230,8 +250,7 @@ void loop()
         candy_given_count_array[pressed_button]++;
         setLCDdispensingText(pressed_button);
 
-        servos_array[pressed_button].attach(servos_pins_array[pressed_button]);
-        servos_array[pressed_button].write(180);
+        openServo(pressed_button);
 
         turnAllCandyLightsOnOrOff(false);
         for (int i = 0; i < flashCountOnCandy; i++) {
@@ -248,7 +267,7 @@ void loop()
 
         delay(SERVO_CANDY_CYCLE_DELAY);
 
-        servos_array[pressed_button].write(0);
+        closeServo(pressed_button);
 
         for (int i = 0; i < flashCountOnCandy; i++) {
             digitalWrite(slideLightPin, HIGH);
@@ -257,7 +276,7 @@ void loop()
             delay(75);
         }
         digitalWrite(slideLightPin, HIGH);
-        delay(2500);
+        delay(SERVO_RETURN_SETTLE_MS);
         detachServos();
         turnAllCandyLightsOnOrOff(false);
         lastPulseTime = millis();
