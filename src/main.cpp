@@ -66,6 +66,16 @@ void turnAllCandyLightsOnOrOff(bool turnOn)
     }
 }
 
+bool isAnyCandyButtonDown()
+{
+    for (int i = 0; i < NUMBER_CANDYCHUTES; i++) {
+        if (digitalRead(candy_button_pins_array[i]) == LOW) {
+            return true;
+        }
+    }
+    return false;
+}
+
 // Set the target before attaching so the first pulse is never the library's 90 degree default.
 void openServo(int chute)
 {
@@ -282,9 +292,15 @@ void loop()
 
         }
     }
-    if (currentRandomButtonState == LOW && digitalRead(randomButtonPin) == HIGH) {
-
-        currentRandomButtonState = HIGH;
+    // Only count it as released once it has stayed up for the debounce time, so a long hold followed
+    // by contact bounce on release doesn't look like a fresh press
+    if (currentRandomButtonState == LOW) {
+        if (digitalRead(randomButtonPin) == LOW) {
+            lastRandomButtonStateChange = millis();
+        } else if ((millis() - lastRandomButtonStateChange) > DEBOUNCE_TIME_MILLIS) {
+            currentRandomButtonState = HIGH;
+            lastRandomButtonStateChange = millis();
+        }
     }
 
     if (pressed_button >= 0 && (currentCandyButtonState == HIGH) && ((millis() - lastCandyButtonStateChange) > DEBOUNCE_TIME_MILLIS)) {
@@ -329,7 +345,10 @@ void loop()
         setLCDstartingText();
     }
 
-    if (currentCandyButtonState == LOW && (pressed_button < 0 || digitalRead(candy_button_pins_array[pressed_button]) == HIGH) && (millis() - lastCandyButtonStateChange > DEBOUNCE_TIME_MILLIS)) {
+    // Same release rule as the random button: every candy button must stay up for the debounce time
+    if (currentCandyButtonState == LOW && isAnyCandyButtonDown()) {
+        lastCandyButtonStateChange = millis();
+    } else if (currentCandyButtonState == LOW && (millis() - lastCandyButtonStateChange > DEBOUNCE_TIME_MILLIS)) {
         currentCandyButtonState = HIGH;
         lastCandyButtonStateChange = millis();
         for (int i = 0; i < flashCountOnCandy; i++) {
