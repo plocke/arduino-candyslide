@@ -25,6 +25,7 @@ struct eeprom_config_struct
   int candy_counts[10];
   int randomButtonPressCount; 
   int randomWinnerCount;
+  byte soundSetting; // 0 = off, 1 = on, anything else (e.g. unwritten 0xFF) = use compiled default
 };
 
 

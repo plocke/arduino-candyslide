@@ -9,8 +9,9 @@
 
 // Servo myTopservo; // create servo object to control a servo
 
+const String SOFTWARE_VERSION = "5"; // shown on the boot screen
 bool ALLOW_SERIAL = false;
-bool SOUND_ENABLED = false; // false mutes the speaker; tune timing is kept so servo dwell is unchanged
+bool SOUND_ENABLED = false; // default until saved in EEPROM; false mutes the speaker, tune timing is kept so servo dwell is unchanged
 int resetButton = A5;
 int slideLightPin = 7;
 
@@ -53,6 +54,7 @@ const int SERVO_RETURN_SETTLE_MS = 2500; // time given for a servo to get fully 
 const long candyLightPulseLengthMs = 1000;
 const long activateLightsPulseLengthMs = 75;
 const int DEBOUNCE_TIME_MILLIS = 100;
+const unsigned long RESET_HOLD_MS = 3000; // hold the reset button this long to clear counts; shorter press toggles sound
 const int flashCountOnCandy = 4;
 const boolean RESET_EEPROM = false; // set to true and next boot will clear eeprom
 
@@ -122,8 +124,43 @@ void resetEEPROM()
     eepromsave.randomWinnerCount = 0;
     randomWinnerCount = 0;
     randomButtonPressCount = 0;
+    eepromsave.soundSetting = SOUND_ENABLED ? 1 : 0; // keep the current sound choice across a count reset
 
     EEPROM_writeAnything(EEPROM_SAVELOCATION, eepromsave);
+}
+
+// Short press toggles sound; holding for RESET_HOLD_MS resets the counts.
+void handleResetButton()
+{
+    unsigned long pressStart = millis();
+    bool didReset = false;
+    while (digitalRead(resetButton) == LOW) {
+        if (!didReset && (millis() - pressStart) >= RESET_HOLD_MS) {
+            resetEEPROM();
+            lcd.clear();
+            setFirstLine("Reset candy count", lcd);
+            didReset = true;
+        }
+    }
+    unsigned long heldMs = millis() - pressStart;
+    delay(DEBOUNCE_TIME_MILLIS); // let the contacts settle after release
+
+    if (didReset) {
+        delay(2000);
+    } else if (heldMs > DEBOUNCE_TIME_MILLIS) {
+        SOUND_ENABLED = !SOUND_ENABLED;
+        eepromsave.soundSetting = SOUND_ENABLED ? 1 : 0;
+        EEPROM_writeAnything(EEPROM_SAVELOCATION, eepromsave);
+        lcd.clear();
+        setFirstLine(SOUND_ENABLED ? "Sound: ON" : "Sound: OFF", lcd);
+        if (SOUND_ENABLED) {
+            tone(speakerPin, 880, 150);
+        }
+        delay(1000);
+    } else {
+        return; // too short to be a real press
+    }
+    setLCDstartingText();
 }
 
 void setup()
@@ -139,6 +176,9 @@ void setup()
     EEPROM_readAnything(EEPROM_SAVELOCATION, eepromsave);
     randomButtonPressCount = eepromsave.randomButtonPressCount;
     randomWinnerCount = eepromsave.randomWinnerCount;
+    if (eepromsave.soundSetting <= 1) {
+        SOUND_ENABLED = eepromsave.soundSetting == 1;
+    }
 
     randomSeed(millis() + analogRead(A6));
 
@@ -160,6 +200,8 @@ void setup()
     lcd.begin(20, 4); // columns, rows.  use 16,2 for a 16x2 LCD, etc.
     lcd.clear(); // start with a blank screen
     setSecondLine("Happy Halloween 2026", lcd); // greeting shown while the startup tune plays
+    setThirdLine("Version " + SOFTWARE_VERSION, lcd);
+    setFourthLine(SOUND_ENABLED ? "Sound: ON" : "Sound: OFF", lcd);
     playBonusTune(speakerPin, SOUND_ENABLED); // the tune plus the delay below give the servos time to reach home before release
     delay(SERVO_CANDY_CYCLE_DELAY);
     detachServos();
@@ -299,10 +341,6 @@ void loop()
     }
 
     if (digitalRead(resetButton) == LOW) {
-        resetEEPROM();
-        lcd.clear();
-        setFirstLine("Reset candy count", lcd);
-        delay(2000);
-        setLCDstartingText();
+        handleResetButton();
     }
 }
