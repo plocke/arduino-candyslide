@@ -107,21 +107,26 @@ void setLCDstartingText()
     setFourthLine("Bonus Tries: " + String(randomButtonPressCount), lcd);
 }
 
-void setLCDdispensingText(int buttonPressed)
+// bonusRoll < 0 means the dispense came from a candy button, so there is no roll to show
+void setLCDdispensingText(int buttonPressed, int bonusRoll)
 {
     lcd.clear();
     setFirstLine("********************", lcd);
     setSecondLine(candy_names_array[buttonPressed] + " !!", lcd);
     setThirdLine(" # Trick-or-Treat # ", lcd);
     setFourthLine("********************", lcd);
+    if (bonusRoll >= 0) {
+        setFourthLine(String(bonusRoll), lcd); // overwrites the bottom-left stars
+    }
 }
-void setBonusWinnerText()
+void setBonusWinnerText(int bonusRoll)
 {
     lcd.clear();
     setFirstLine("********************", lcd);
     setSecondLine(String(randomWinnerCount) + " Winner!!", lcd);
     setThirdLine(" # Trick-or-Treat # ", lcd);
     setFourthLine("********************", lcd);
+    setFourthLine(String(bonusRoll), lcd); // overwrites the bottom-left stars
 }
 
 void resetEEPROM()
@@ -209,6 +214,7 @@ void setup()
 
     lcd.begin(20, 4); // columns, rows.  use 16,2 for a 16x2 LCD, etc.
     lcd.clear(); // start with a blank screen
+    setFirstLine("Bonus chance: " + String(bonusChancePercentage) + "%", lcd);
     setSecondLine("Happy Halloween 2026", lcd); // greeting shown while the startup tune plays
     setThirdLine("Version " + SOFTWARE_VERSION, lcd);
     setFourthLine(SOUND_ENABLED ? "Sound: ON" : "Sound: OFF", lcd);
@@ -235,6 +241,7 @@ void loop()
     }
 
     pressed_button = -1;
+    int bonusRoll = -1; // set when this dispense comes from the random button
     for (int i = 0; i < NUMBER_CANDYCHUTES; i++) {
         if (digitalRead(candy_button_pins_array[i]) == LOW) {
             pressed_button = i;
@@ -254,10 +261,8 @@ void loop()
                 candyChuteIndexOrBonus = random(NUMBER_CANDYCHUTES);
             }
             randomButtonPressCount++;
-            lcd.clear();
-            setBonusWinnerText();
-            setFourthLine("Bonus!: " + String(randNum) + " " + String(candyChuteIndexOrBonus) + " " + String(bonusChancePercentage), lcd);
             if (candyChuteIndexOrBonus == BONUS_RESULT) {
+                setBonusWinnerText(randNum);
                 randomWinnerCount++;
                
                 // Open every chute
@@ -284,6 +289,7 @@ void loop()
                 detachServos();
             } else {
                 pressed_button = candyChuteIndexOrBonus;
+                bonusRoll = randNum;
             }
             eepromsave.randomWinnerCount = randomWinnerCount;
             eepromsave.randomButtonPressCount = randomButtonPressCount;
@@ -307,7 +313,7 @@ void loop()
         currentCandyButtonState = LOW;
         lastCandyButtonStateChange = millis();
         candy_given_count_array[pressed_button]++;
-        setLCDdispensingText(pressed_button);
+        setLCDdispensingText(pressed_button, bonusRoll);
 
         openServo(pressed_button);
 
