@@ -32,11 +32,11 @@ int randomWinnerCount = 0;
 
 const int speakerPin = A2;
 
-LiquidCrystal lcd(12, 11, 10, 6, 5, 4, 3);
+LiquidCrystal lcd(12, 10, 6, 5, 4, 3); // RW tied to GND, D11 unused
 eeprom_config_struct eepromsave;
 
 int pressed_button = -1;
-int currentLightState = HIGH;
+int restingLightIndex = 0; // which button light is lit in the idle chase
 int currentCandyButtonState = LOW;
 int currentRandomButtonState = HIGH;
 unsigned long lastPulseTime = 0;
@@ -51,7 +51,12 @@ const int SERVO_CANDY_CYCLE_DELAY = 500; // how long a chute stays open
 const int SERVO_CLOSED_ANGLE = 10;
 const int SERVO_OPEN_ANGLE = 170;
 const int SERVO_RETURN_SETTLE_MS = 2500; // time given for a servo to get fully home before its signal is removed
-const long candyLightPulseLengthMs = 1000;
+const int SERVO_STAGGER_MS = 500; // bonus win moves servos one at a time; gap lets one finish its sweep before the next starts, so they never draw stall current together
+// idle chase order: candy chute indexes, with NUMBER_CANDYCHUTES meaning the random button
+// scans back and forth: left, middle, right, middle, then repeats
+const int restingLightOrder[] = { 0, NUMBER_CANDYCHUTES, 1, NUMBER_CANDYCHUTES };
+const int RESTING_LIGHT_COUNT = sizeof(restingLightOrder) / sizeof(restingLightOrder[0]);
+const long restingLightStepMs = 1000 / RESTING_LIGHT_COUNT; // one full chase cycle per second
 const long activateLightsPulseLengthMs = 75;
 const int DEBOUNCE_TIME_MILLIS = 100;
 const unsigned long RESET_HOLD_MS = 3000; // hold the reset button this long to clear counts; shorter press toggles sound
@@ -64,6 +69,15 @@ void turnAllCandyLightsOnOrOff(bool turnOn)
         digitalWrite(candy_light_pins_array[i], turnOn ? HIGH : LOW);
         digitalWrite(randomButtonLightPin, turnOn ? HIGH : LOW);
     }
+}
+
+// Light only one button: indexes below NUMBER_CANDYCHUTES are candy buttons, NUMBER_CANDYCHUTES is the random button
+void showRestingLight(int index)
+{
+    for (int i = 0; i < NUMBER_CANDYCHUTES; i++) {
+        digitalWrite(candy_light_pins_array[i], i == index ? HIGH : LOW);
+    }
+    digitalWrite(randomButtonLightPin, index == NUMBER_CANDYCHUTES ? HIGH : LOW);
 }
 
 bool isAnyCandyButtonDown()
@@ -226,17 +240,9 @@ void setup()
 
 void loop()
 {
-    if ((millis() - lastPulseTime) > candyLightPulseLengthMs) {
-
-        if (currentLightState == HIGH) {
-            turnAllCandyLightsOnOrOff(false);
-            currentLightState = LOW;
-            // blinkCursorOnScreen(true);
-        } else if (currentLightState == LOW) {
-            turnAllCandyLightsOnOrOff(true);
-            currentLightState = HIGH;
-            // blinkCursorOnScreen(false);
-        }
+    if ((millis() - lastPulseTime) > restingLightStepMs) {
+        showRestingLight(restingLightOrder[restingLightIndex]);
+        restingLightIndex = (restingLightIndex + 1) % RESTING_LIGHT_COUNT;
         lastPulseTime = millis();
     }
 
@@ -265,8 +271,11 @@ void loop()
                 setBonusWinnerText(randNum);
                 randomWinnerCount++;
                
-                // Open every chute
+                // Open every chute, one at a time to limit power draw
                 for (int i = 0; i < NUMBER_CANDYCHUTES; i++) {
+                    if (i > 0) {
+                        delay(SERVO_STAGGER_MS);
+                    }
                     openServo(i);
                 }
 
@@ -281,8 +290,11 @@ void loop()
                 delay(SERVO_CANDY_CYCLE_DELAY);
 
 
-                // Close every chute and give them the same time to get home as a normal candy press
+                // Close every chute one at a time, then give the last one the same time to get home as a normal candy press
                 for (int i = 0; i < NUMBER_CANDYCHUTES; i++) {
+                    if (i > 0) {
+                        delay(SERVO_STAGGER_MS);
+                    }
                     closeServo(i);
                 }
                 delay(SERVO_RETURN_SETTLE_MS);
