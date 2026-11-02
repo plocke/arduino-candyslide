@@ -35,7 +35,6 @@ const int speakerPin = A2;
 LiquidCrystal lcd(12, 10, 6, 5, 4, 3); // RW tied to GND, D11 unused
 eeprom_config_struct eepromsave;
 
-int pressed_button = -1;
 int restingLightIndex = 0; // which button light is lit in the idle chase
 int currentCandyButtonState = LOW;
 int currentRandomButtonState = HIGH;
@@ -44,7 +43,6 @@ unsigned long lastRandomButtonStateChange = 0;
 unsigned long lastCandyButtonStateChange = 0;
 int bonusChancePercentage = 20; // change this for higher or lower bonus chance on random
 
-const int BONUS_RESULT = -1;
 const int SERVO_CANDY_CYCLE_DELAY = 500; // how long a chute stays open
 // Servo travel. Full 0/180 stalls most hobby servos against their end stops (buzzing, heat, gear wear).
 // Calibrate these to the smallest sweep that still clears the candy without buzzing at either end.
@@ -59,6 +57,7 @@ const int RESTING_LIGHT_COUNT = sizeof(restingLightOrder) / sizeof(restingLightO
 const long restingLightStepMs = 1000 / RESTING_LIGHT_COUNT; // one full chase cycle per second
 const long activateLightsPulseLengthMs = 75;
 const int DEBOUNCE_TIME_MILLIS = 100;
+const unsigned long BONUS_TEST_WINDOW_MS = 200; // how far apart the candy buttons can be pressed and still count as together
 const unsigned long RESET_HOLD_MS = 3000; // hold the reset button this long to clear counts; shorter press toggles sound
 const int flashCountOnCandy = 4;
 const boolean RESET_EEPROM = false; // set to true and next boot will clear eeprom
@@ -84,6 +83,29 @@ bool isAnyCandyButtonDown()
 {
     for (int i = 0; i < NUMBER_CANDYCHUTES; i++) {
         if (digitalRead(candy_button_pins_array[i]) == LOW) {
+            return true;
+        }
+    }
+    return false;
+}
+
+bool isEveryCandyButtonDown()
+{
+    for (int i = 0; i < NUMBER_CANDYCHUTES; i++) {
+        if (digitalRead(candy_button_pins_array[i]) == HIGH) {
+            return false;
+        }
+    }
+    return true;
+}
+
+// Pressing every candy button together never happens in real use, so it triggers a bonus test.
+// Two hands never land at exactly the same instant, so give the other buttons a short window to come down.
+bool waitForEveryCandyButtonDown()
+{
+    unsigned long start = millis();
+    while ((millis() - start) < BONUS_TEST_WINDOW_MS) {
+        if (isEveryCandyButtonDown()) {
             return true;
         }
     }
@@ -141,6 +163,92 @@ void setBonusWinnerText(int bonusRoll)
     setThirdLine(" # Trick-or-Treat # ", lcd);
     setFourthLine("********************", lcd);
     setFourthLine(String(bonusRoll), lcd); // overwrites the bottom-left stars
+}
+void setBonusTestText()
+{
+    lcd.clear();
+    setFirstLine("********************", lcd);
+    setSecondLine("Bonus TEST", lcd);
+    setThirdLine("Not counted", lcd);
+    setFourthLine("********************", lcd);
+}
+
+// Opens and closes every chute. Servos move one at a time to limit power draw.
+void dispenseBonus()
+{
+    for (int i = 0; i < NUMBER_CANDYCHUTES; i++) {
+        if (i > 0) {
+            delay(SERVO_STAGGER_MS);
+        }
+        openServo(i);
+    }
+
+    for (int i = 0; i < 3; i++) {
+        digitalWrite(randomButtonLightPin, HIGH);
+        delay(100);
+        digitalWrite(randomButtonLightPin, LOW);
+        delay(100);
+    }
+
+    playBonusTune(speakerPin, SOUND_ENABLED);
+    delay(SERVO_CANDY_CYCLE_DELAY);
+
+    // Close every chute one at a time, then give the last one the same time to get home as a normal candy press
+    for (int i = 0; i < NUMBER_CANDYCHUTES; i++) {
+        if (i > 0) {
+            delay(SERVO_STAGGER_MS);
+        }
+        closeServo(i);
+    }
+    delay(SERVO_RETURN_SETTLE_MS);
+    detachServos();
+}
+
+// Opens one chute with its light show. bonusRoll < 0 means a candy button started it, so there is no roll to show.
+// Updates the count in eepromsave but leaves the write to the caller, so a random press saves once.
+void dispenseCandy(int chute, int bonusRoll)
+{
+    candy_given_count_array[chute]++;
+    setLCDdispensingText(chute, bonusRoll);
+
+    openServo(chute);
+
+    turnAllCandyLightsOnOrOff(false);
+    for (int i = 0; i < flashCountOnCandy; i++) {
+        digitalWrite(candy_light_pins_array[chute], HIGH);
+        digitalWrite(slideLightPin, HIGH);
+        delay(activateLightsPulseLengthMs);
+        digitalWrite(candy_light_pins_array[chute], LOW);
+        digitalWrite(slideLightPin, LOW);
+        delay(activateLightsPulseLengthMs);
+    }
+
+    digitalWrite(candy_light_pins_array[chute], HIGH);
+    digitalWrite(slideLightPin, HIGH);
+
+    delay(SERVO_CANDY_CYCLE_DELAY);
+
+    closeServo(chute);
+
+    for (int i = 0; i < flashCountOnCandy; i++) {
+        digitalWrite(slideLightPin, HIGH);
+        delay(75);
+        digitalWrite(slideLightPin, LOW);
+        delay(75);
+    }
+    digitalWrite(slideLightPin, HIGH);
+    delay(SERVO_RETURN_SETTLE_MS);
+    detachServos();
+    turnAllCandyLightsOnOrOff(false);
+    eepromsave.candy_counts[chute] = candy_given_count_array[chute];
+}
+
+// Every candy button must be seen released before the next candy press counts. Called after any dispense,
+// so a button that was held down while the machine was busy doesn't fire the moment it finishes.
+void requireCandyButtonRelease()
+{
+    currentCandyButtonState = LOW;
+    lastCandyButtonStateChange = millis();
 }
 
 void resetEEPROM()
@@ -203,8 +311,9 @@ void setup()
     }
 
     EEPROM_readAnything(EEPROM_SAVELOCATION, eepromsave);
-    randomButtonPressCount = eepromsave.randomButtonPressCount;
-    randomWinnerCount = eepromsave.randomWinnerCount;
+    // A never-written EEPROM reads as 0xFFFF, which is -1 as an int. Start those counts at zero.
+    randomButtonPressCount = max(eepromsave.randomButtonPressCount, 0);
+    randomWinnerCount = max(eepromsave.randomWinnerCount, 0);
     if (eepromsave.soundSetting <= 1) {
         SOUND_ENABLED = eepromsave.soundSetting == 1;
     }
@@ -212,9 +321,13 @@ void setup()
     randomSeed(millis() + analogRead(A6));
 
     for (int i = 0; i < NUMBER_CANDYCHUTES; i++) {
-        candy_given_count_array[i] = eepromsave.candy_counts[i];
+        candy_given_count_array[i] = max(eepromsave.candy_counts[i], 0);
         pinMode(candy_button_pins_array[i], INPUT_PULLUP);
         pinMode(candy_light_pins_array[i], OUTPUT);
+        // Home the servos one at a time, same as a bonus win, so two don't stall against their stops together
+        if (i > 0) {
+            delay(SERVO_STAGGER_MS);
+        }
         servos_array[i].write(SERVO_CLOSED_ANGLE);
         servos_array[i].attach(servos_pins_array[i]);
     }
@@ -246,68 +359,25 @@ void loop()
         lastPulseTime = millis();
     }
 
-    pressed_button = -1;
-    int bonusRoll = -1; // set when this dispense comes from the random button
-    for (int i = 0; i < NUMBER_CANDYCHUTES; i++) {
-        if (digitalRead(candy_button_pins_array[i]) == LOW) {
-            pressed_button = i;
-            break;
-        }
-    }
-
     if (currentRandomButtonState == HIGH && (millis() - lastRandomButtonStateChange) > DEBOUNCE_TIME_MILLIS) {
         if (digitalRead(randomButtonPin) == LOW) {
             currentRandomButtonState = LOW;
             lastRandomButtonStateChange = millis();
             int randNum = random(100);
-            int candyChuteIndexOrBonus;
-            if (randNum < bonusChancePercentage) {
-                candyChuteIndexOrBonus = BONUS_RESULT;
-            } else {
-                candyChuteIndexOrBonus = random(NUMBER_CANDYCHUTES);
-            }
             randomButtonPressCount++;
-            if (candyChuteIndexOrBonus == BONUS_RESULT) {
-                setBonusWinnerText(randNum);
+            if (randNum < bonusChancePercentage) {
                 randomWinnerCount++;
-               
-                // Open every chute, one at a time to limit power draw
-                for (int i = 0; i < NUMBER_CANDYCHUTES; i++) {
-                    if (i > 0) {
-                        delay(SERVO_STAGGER_MS);
-                    }
-                    openServo(i);
-                }
-
-                 for (int i = 0; i < 3; i++) {
-                    digitalWrite(randomButtonLightPin, HIGH);
-                    delay(100);
-                    digitalWrite(randomButtonLightPin, LOW);
-                    delay(100);
-                }
-
-                playBonusTune(speakerPin, SOUND_ENABLED);
-                delay(SERVO_CANDY_CYCLE_DELAY);
-
-
-                // Close every chute one at a time, then give the last one the same time to get home as a normal candy press
-                for (int i = 0; i < NUMBER_CANDYCHUTES; i++) {
-                    if (i > 0) {
-                        delay(SERVO_STAGGER_MS);
-                    }
-                    closeServo(i);
-                }
-                delay(SERVO_RETURN_SETTLE_MS);
-                detachServos();
+                setBonusWinnerText(randNum);
+                dispenseBonus();
             } else {
-                pressed_button = candyChuteIndexOrBonus;
-                bonusRoll = randNum;
+                dispenseCandy(random(NUMBER_CANDYCHUTES), randNum);
             }
             eepromsave.randomWinnerCount = randomWinnerCount;
             eepromsave.randomButtonPressCount = randomButtonPressCount;
             EEPROM_writeAnything(EEPROM_SAVELOCATION, eepromsave);
+            requireCandyButtonRelease();
+            lastPulseTime = millis();
             setLCDstartingText();
-
         }
     }
     // Only count it as released once it has stayed up for the debounce time, so a long hold followed
@@ -321,45 +391,24 @@ void loop()
         }
     }
 
+    int pressed_button = -1;
+    for (int i = 0; i < NUMBER_CANDYCHUTES; i++) {
+        if (digitalRead(candy_button_pins_array[i]) == LOW) {
+            pressed_button = i;
+            break;
+        }
+    }
+
     if (pressed_button >= 0 && (currentCandyButtonState == HIGH) && ((millis() - lastCandyButtonStateChange) > DEBOUNCE_TIME_MILLIS)) {
-        currentCandyButtonState = LOW;
-        lastCandyButtonStateChange = millis();
-        candy_given_count_array[pressed_button]++;
-        setLCDdispensingText(pressed_button, bonusRoll);
-
-        openServo(pressed_button);
-
-        turnAllCandyLightsOnOrOff(false);
-        for (int i = 0; i < flashCountOnCandy; i++) {
-            digitalWrite(candy_light_pins_array[pressed_button], HIGH);
-            digitalWrite(slideLightPin, HIGH);
-            delay(activateLightsPulseLengthMs);
-            digitalWrite(candy_light_pins_array[pressed_button], LOW);
-            digitalWrite(slideLightPin, LOW);
-            delay(activateLightsPulseLengthMs);
+        requireCandyButtonRelease();
+        if (waitForEveryCandyButtonDown()) {
+            setBonusTestText();
+            dispenseBonus();
+        } else {
+            dispenseCandy(pressed_button, -1);
+            EEPROM_writeAnything(EEPROM_SAVELOCATION, eepromsave);
         }
-
-        digitalWrite(candy_light_pins_array[pressed_button], HIGH);
-        digitalWrite(slideLightPin, HIGH);
-
-        delay(SERVO_CANDY_CYCLE_DELAY);
-
-        closeServo(pressed_button);
-
-        for (int i = 0; i < flashCountOnCandy; i++) {
-            digitalWrite(slideLightPin, HIGH);
-            delay(75);
-            digitalWrite(slideLightPin, LOW);
-            delay(75);
-        }
-        digitalWrite(slideLightPin, HIGH);
-        delay(SERVO_RETURN_SETTLE_MS);
-        detachServos();
-        turnAllCandyLightsOnOrOff(false);
         lastPulseTime = millis();
-        eepromsave.candy_counts[pressed_button] = candy_given_count_array[pressed_button];
-        EEPROM_writeAnything(EEPROM_SAVELOCATION, eepromsave);
-        lcd.clear();
         setLCDstartingText();
     }
 
